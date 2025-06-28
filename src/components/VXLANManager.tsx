@@ -23,11 +23,16 @@ interface VXLAN {
 const VXLANManager = () => {
   const [vxlans, setVxlans] = useState<VXLAN[]>([]);
   const [showAddVXLAN, setShowAddVXLAN] = useState(false);
-  const [newVXLAN, setNewVXLAN] = useState({
+  const [newVXLAN, setNewVXLAN] = useState<{
+    vni: string;
+    name: string;
+    vlan: string;
+    status: "active" | "inactive";
+  }>({
     vni: "",
     name: "",
     vlan: "",
-    status: "active" as const
+    status: "active"
   });
 
   const handleAddVXLAN = () => {

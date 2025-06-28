@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +21,16 @@ interface VLAN {
 const VLANManager = () => {
   const [vlans, setVlans] = useState<VLAN[]>([]);
   const [showAddVLAN, setShowAddVLAN] = useState(false);
-  const [newVLAN, setNewVLAN] = useState({
+  const [newVLAN, setNewVLAN] = useState<{
+    vlanId: string;
+    name: string;
+    description: string;
+    status: "active" | "inactive";
+  }>({
     vlanId: "",
     name: "",
     description: "",
-    status: "active" as const
+    status: "active"
   });
 
   const handleAddVLAN = () => {
