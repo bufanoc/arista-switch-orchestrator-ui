@@ -1,9 +1,10 @@
-
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, AlertCircle, CheckCircle, Clock, Network, Server, Wifi } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Network, Server, Wifi, Plus } from "lucide-react";
+import AddSwitchDialog from "./AddSwitchDialog";
 
 // Mock data - in real app this would come from API
 const mockSwitches = [
@@ -37,6 +38,7 @@ const mockSwitches = [
 ];
 
 const Dashboard = () => {
+  const [showAddSwitch, setShowAddSwitch] = useState(false);
   const connectedCount = mockSwitches.filter(s => s.status === "connected").length;
   const totalCount = mockSwitches.length;
 
@@ -92,10 +94,19 @@ const Dashboard = () => {
       {/* Switch Status Table */}
       <Card className="bg-slate-900/50 border-slate-800">
         <CardHeader>
-          <CardTitle className="text-white flex items-center">
-            <Server className="h-5 w-5 mr-2 text-cyan-400" />
-            Switch Inventory
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-white flex items-center">
+              <Server className="h-5 w-5 mr-2 text-cyan-400" />
+              Switch Inventory
+            </CardTitle>
+            <Button 
+              onClick={() => setShowAddSwitch(true)}
+              className="bg-cyan-500 hover:bg-cyan-600 text-white"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Switch
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -146,6 +157,11 @@ const Dashboard = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <AddSwitchDialog 
+        open={showAddSwitch} 
+        onOpenChange={setShowAddSwitch}
+      />
     </div>
   );
 };
