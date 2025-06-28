@@ -9,33 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Edit, Trash2, Eye, CheckCircle, Activity } from "lucide-react";
+import { Plus, Edit, Trash2, Eye, CheckCircle, Activity, Zap } from "lucide-react";
 import CLIDiffViewer from "@/components/CLIDiffViewer";
 
-// Mock VXLAN data
-const mockVxlans = [
-  { 
-    vni: 10010, 
-    vlan: 10, 
-    vtepSourceIP: "10.1.1.1", 
-    vtepInterface: "Loopback1", 
-    multicast: true, 
-    udpPort: 4789,
-    switch: "arista-leaf-01" 
-  },
-  { 
-    vni: 10020, 
-    vlan: 20, 
-    vtepSourceIP: "10.1.1.2", 
-    vtepInterface: "Loopback1", 
-    multicast: false, 
-    udpPort: 4789,
-    switch: "arista-leaf-02" 
-  },
-];
-
 const VXLANManager = () => {
-  const [vxlans, setVxlans] = useState(mockVxlans);
+  const [vxlans, setVxlans] = useState([]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDiffDialog, setShowDiffDialog] = useState(false);
   const [newVxlan, setNewVxlan] = useState({ 
@@ -179,9 +157,7 @@ router-mac address-table
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      <SelectItem value="arista-leaf-01">arista-leaf-01</SelectItem>
-                      <SelectItem value="arista-leaf-02">arista-leaf-02</SelectItem>
-                      <SelectItem value="arista-spine-01">arista-spine-01</SelectItem>
+                      <SelectItem value="no-switches">No switches available</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -214,54 +190,62 @@ router-mac address-table
           <CardTitle className="text-white">Current VXLANs</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-slate-800">
-                <TableHead className="text-slate-400">VNI</TableHead>
-                <TableHead className="text-slate-400">VLAN</TableHead>
-                <TableHead className="text-slate-400">VTEP Source</TableHead>
-                <TableHead className="text-slate-400">Interface</TableHead>
-                <TableHead className="text-slate-400">Mode</TableHead>
-                <TableHead className="text-slate-400">UDP Port</TableHead>
-                <TableHead className="text-slate-400">Switch</TableHead>
-                <TableHead className="text-slate-400">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {vxlans.map((vxlan) => (
-                <TableRow key={`${vxlan.switch}-${vxlan.vni}`} className="border-slate-800">
-                  <TableCell className="font-mono text-cyan-400 font-bold">{vxlan.vni}</TableCell>
-                  <TableCell className="font-mono text-white">{vxlan.vlan}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{vxlan.vtepSourceIP}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{vxlan.vtepInterface}</TableCell>
-                  <TableCell>
-                    {vxlan.multicast ? (
-                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/50">
-                        <Activity className="h-3 w-3 mr-1" />
-                        Multicast
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/50">
-                        L2-Only
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-mono text-slate-300">{vxlan.udpPort}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{vxlan.switch}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button size="sm" variant="outline" className="border-blue-500/50 text-blue-400">
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-red-500/50 text-red-400">
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          {vxlans.length === 0 ? (
+            <div className="text-center py-8">
+              <Zap className="h-12 w-12 mx-auto text-slate-600 mb-4" />
+              <p className="text-slate-400">No VXLANs configured yet</p>
+              <p className="text-slate-500 text-sm">Create your first VXLAN overlay to get started</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-400">VNI</TableHead>
+                  <TableHead className="text-slate-400">VLAN</TableHead>
+                  <TableHead className="text-slate-400">VTEP Source</TableHead>
+                  <TableHead className="text-slate-400">Interface</TableHead>
+                  <TableHead className="text-slate-400">Mode</TableHead>
+                  <TableHead className="text-slate-400">UDP Port</TableHead>
+                  <TableHead className="text-slate-400">Switch</TableHead>
+                  <TableHead className="text-slate-400">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {vxlans.map((vxlan) => (
+                  <TableRow key={`${vxlan.switch}-${vxlan.vni}`} className="border-slate-800">
+                    <TableCell className="font-mono text-cyan-400 font-bold">{vxlan.vni}</TableCell>
+                    <TableCell className="font-mono text-white">{vxlan.vlan}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{vxlan.vtepSourceIP}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{vxlan.vtepInterface}</TableCell>
+                    <TableCell>
+                      {vxlan.multicast ? (
+                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/50">
+                          <Activity className="h-3 w-3 mr-1" />
+                          Multicast
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/50">
+                          L2-Only
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-slate-300">{vxlan.udpPort}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{vxlan.switch}</TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button size="sm" variant="outline" className="border-blue-500/50 text-blue-400">
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-500/50 text-red-400">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,41 +7,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Activity, AlertCircle, CheckCircle, Clock, Network, Server, Wifi, Plus } from "lucide-react";
 import AddSwitchDialog from "./AddSwitchDialog";
 
-// Mock data - in real app this would come from API
-const mockSwitches = [
-  {
-    id: 1,
-    hostname: "arista-leaf-01",
-    mgmtIP: "192.168.1.101",
-    eosVersion: "4.29.2F",
-    uptime: "15d 8h 23m",
-    status: "connected",
-    model: "DCS-7050SX3-48YC12"
-  },
-  {
-    id: 2,
-    hostname: "arista-leaf-02", 
-    mgmtIP: "192.168.1.102",
-    eosVersion: "4.29.2F",
-    uptime: "15d 8h 19m",
-    status: "connected",
-    model: "DCS-7050SX3-48YC12"
-  },
-  {
-    id: 3,
-    hostname: "arista-spine-01",
-    mgmtIP: "192.168.1.201",
-    eosVersion: "4.28.3M",
-    uptime: "22d 14h 7m", 
-    status: "warning",
-    model: "DCS-7280SR3-48YC8"
-  }
-];
-
 const Dashboard = () => {
   const [showAddSwitch, setShowAddSwitch] = useState(false);
-  const connectedCount = mockSwitches.filter(s => s.status === "connected").length;
-  const totalCount = mockSwitches.length;
+  const [switches, setSwitches] = useState([]);
+  
+  const connectedCount = switches.filter(s => s.status === "connected").length;
+  const totalCount = switches.length;
 
   return (
     <div className="space-y-6">
@@ -63,7 +35,7 @@ const Dashboard = () => {
             <Wifi className="h-4 w-4 text-green-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">127</div>
+            <div className="text-2xl font-bold text-white">0</div>
             <p className="text-xs text-slate-500 mt-1">across all switches</p>
           </CardContent>
         </Card>
@@ -74,7 +46,7 @@ const Dashboard = () => {
             <Activity className="h-4 w-4 text-blue-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">23</div>
+            <div className="text-2xl font-bold text-white">0</div>
             <p className="text-xs text-slate-500 mt-1">active VNIs</p>
           </CardContent>
         </Card>
@@ -85,8 +57,8 @@ const Dashboard = () => {
             <Clock className="h-4 w-4 text-yellow-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">2m</div>
-            <p className="text-xs text-slate-500 mt-1">ago</p>
+            <div className="text-2xl font-bold text-white">--</div>
+            <p className="text-xs text-slate-500 mt-1">no commits yet</p>
           </CardContent>
         </Card>
       </div>
@@ -109,58 +81,67 @@ const Dashboard = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="border-slate-800">
-                <TableHead className="text-slate-400">Status</TableHead>
-                <TableHead className="text-slate-400">Hostname</TableHead>
-                <TableHead className="text-slate-400">Management IP</TableHead>
-                <TableHead className="text-slate-400">EOS Version</TableHead>
-                <TableHead className="text-slate-400">Model</TableHead>
-                <TableHead className="text-slate-400">Uptime</TableHead>
-                <TableHead className="text-slate-400">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockSwitches.map((sw) => (
-                <TableRow key={sw.id} className="border-slate-800">
-                  <TableCell>
-                    {sw.status === "connected" ? (
-                      <Badge className="bg-green-500/20 text-green-400 border-green-500/50">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Connected
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        Warning
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-mono text-white">{sw.hostname}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{sw.mgmtIP}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{sw.eosVersion}</TableCell>
-                  <TableCell className="text-slate-300">{sw.model}</TableCell>
-                  <TableCell className="font-mono text-slate-300">{sw.uptime}</TableCell>
-                  <TableCell>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
-                    >
-                      Configure
-                    </Button>
-                  </TableCell>
+          {switches.length === 0 ? (
+            <div className="text-center py-8">
+              <Server className="h-12 w-12 mx-auto text-slate-600 mb-4" />
+              <p className="text-slate-400">No switches added yet</p>
+              <p className="text-slate-500 text-sm">Click "Add Switch" to get started</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-400">Status</TableHead>
+                  <TableHead className="text-slate-400">Hostname</TableHead>
+                  <TableHead className="text-slate-400">Management IP</TableHead>
+                  <TableHead className="text-slate-400">EOS Version</TableHead>
+                  <TableHead className="text-slate-400">Model</TableHead>
+                  <TableHead className="text-slate-400">Uptime</TableHead>
+                  <TableHead className="text-slate-400">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {switches.map((sw) => (
+                  <TableRow key={sw.id} className="border-slate-800">
+                    <TableCell>
+                      {sw.status === "connected" ? (
+                        <Badge className="bg-green-500/20 text-green-400 border-green-500/50">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Connected
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Warning
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-white">{sw.hostname}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{sw.mgmtIP}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{sw.eosVersion}</TableCell>
+                    <TableCell className="text-slate-300">{sw.model}</TableCell>
+                    <TableCell className="font-mono text-slate-300">{sw.uptime}</TableCell>
+                    <TableCell>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/20"
+                      >
+                        Configure
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <AddSwitchDialog 
         open={showAddSwitch} 
         onOpenChange={setShowAddSwitch}
+        onSwitchAdded={(newSwitch) => setSwitches([...switches, newSwitch])}
       />
     </div>
   );
