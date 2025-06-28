@@ -102,7 +102,7 @@ const VLANManager = () => {
               </div>
               <div>
                 <Label htmlFor="vlan-status">Status</Label>
-                <Select value={newVLAN.status} onValueChange={(value: "active" | "inactive") => setNewVLAN({ ...newVLAN, status: value })}>
+                <Select value={newVLAN.status} onValueChange={(value: string) => setNewVLAN({ ...newVLAN, status: value as "active" | "inactive" })}>
                   <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>

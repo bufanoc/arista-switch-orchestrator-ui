@@ -105,7 +105,7 @@ const VXLANManager = () => {
               </div>
               <div>
                 <Label htmlFor="vxlan-status">Status</Label>
-                <Select value={newVXLAN.status} onValueChange={(value: "active" | "inactive") => setNewVXLAN({ ...newVXLAN, status: value })}>
+                <Select value={newVXLAN.status} onValueChange={(value: string) => setNewVXLAN({ ...newVXLAN, status: value as "active" | "inactive" })}>
                   <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
