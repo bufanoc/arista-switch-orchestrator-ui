@@ -67,16 +67,11 @@ sudo apt install -y build-essential
 log "${BLUE}Installing PM2 process manager...${NC}"
 sudo npm install -g pm2
 
-# Install Nginx for reverse proxy
-log "${BLUE}Installing Nginx...${NC}"
-sudo apt install -y nginx
-
 # Configure firewall
 log "${BLUE}Configuring UFW firewall...${NC}"
 sudo ufw allow ssh
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 8080/tcp
 sudo ufw --force enable
 
 # Create application directory
@@ -145,7 +140,7 @@ const server = http.createServer((req, res) => {
             </ol>
         </div>
         <p><strong>Server Status:</strong> ✅ Infrastructure Ready</p>
-        <p><strong>Port:</strong> 8080</p>
+        <p><strong>Port:</strong> 80</p>
         <p><strong>Logs:</strong> <code>/var/log/arista-switch-manager/</code></p>
     </div>
 </body>
@@ -160,7 +155,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 80;
 server.listen(PORT, () => {
     console.log(`Placeholder server running on port ${PORT}`);
 });
@@ -190,13 +185,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=root
 WorkingDirectory=$APP_DIR
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
 RestartSec=10
 Environment=NODE_ENV=production
-Environment=PORT=8080
+Environment=PORT=80
 
 [Install]
 WantedBy=multi-user.target
@@ -208,38 +203,15 @@ sudo systemctl enable arista-switch-manager
 sudo systemctl start arista-switch-manager
 log "${GREEN}Service created, enabled, and started${NC}"
 
-# Configure Nginx reverse proxy
-log "${BLUE}Configuring Nginx reverse proxy...${NC}"
-sudo tee /etc/nginx/sites-available/arista-switch-manager > /dev/null <<EOF
-server {
-    listen 80;
-    server_name _;
+# Remove Nginx since we're running directly on port 80
+log "${BLUE}Stopping and disabling Nginx (running directly on port 80)...${NC}"
+sudo systemctl stop nginx 2>/dev/null || true
+sudo systemctl disable nginx 2>/dev/null || true
 
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 30s;
-        proxy_read_timeout 30s;
-    }
-    
-    location /health {
-        proxy_pass http://localhost:8080/health;
-        access_log off;
-    }
-}
-EOF
-
-sudo ln -sf /etc/nginx/sites-available/arista-switch-manager /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+# Set up monitoring directory
+MONITOR_DIR="/var/lib/arista-switch-manager"
+sudo mkdir -p $MONITOR_DIR
+sudo chown $USER:$USER $MONITOR_DIR
 
 # Create log rotation
 log "${BLUE}Setting up log rotation...${NC}"
@@ -255,20 +227,15 @@ $LOG_DIR/*.log {
 }
 EOF
 
-# Set up monitoring directory
-MONITOR_DIR="/var/lib/arista-switch-manager"
-sudo mkdir -p $MONITOR_DIR
-sudo chown $USER:$USER $MONITOR_DIR
-
 # Wait a moment for service to start
 sleep 3
 
 # Check if service is running
 if systemctl is-active --quiet arista-switch-manager; then
-    log "${GREEN}✅ Service is running${NC}"
+    log "${GREEN}✅ Service is running on port 80${NC}"
     
     # Test the endpoint
-    if curl -s http://localhost:8080/health > /dev/null; then
+    if curl -s http://localhost/health > /dev/null; then
         log "${GREEN}✅ Application is responding${NC}"
     else
         log "${YELLOW}⚠️ Service running but not responding${NC}"
@@ -300,12 +267,10 @@ log ""
 log "${BLUE}Log Locations:${NC}"
 log "- Installation log: $INSTALL_LOG"
 log "- Application logs: journalctl -u arista-switch-manager"
-log "- Nginx logs: /var/log/nginx/"
 log ""
 log "${BLUE}Useful Commands:${NC}"
 log "- View logs: tail -f $INSTALL_LOG"
 log "- Restart service: sudo systemctl restart arista-switch-manager"
-log "- Check Nginx: sudo nginx -t"
 log "- Service status: sudo systemctl status arista-switch-manager"
 
 exit 0
