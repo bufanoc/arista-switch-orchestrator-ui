@@ -68,11 +68,11 @@ log "${BLUE}Installing PM2 process manager...${NC}"
 sudo npm install -g pm2
 
 # Configure firewall
-log "${BLUE}Configuring UFW firewall...${NC}"
-sudo ufw allow ssh
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw --force enable
+#log "${BLUE}Configuring UFW firewall...${NC}"
+#sudo ufw allow ssh
+#sudo ufw allow 80/tcp
+#sudo ufw allow 443/tcp
+#sudo ufw --force enable
 
 # Create application directory
 APP_DIR="/opt/arista-switch-manager"
