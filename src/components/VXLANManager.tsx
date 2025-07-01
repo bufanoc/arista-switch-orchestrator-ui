@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,52 +8,164 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Zap, Plus, Edit, Trash2, Activity } from "lucide-react";
+import { Zap, Plus, Edit, Trash2, Activity, RefreshCw, AlertTriangle } from "lucide-react";
+import { VXLANsAPI, VXLAN } from "@/lib/api-client";
+import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 
-interface VXLAN {
-  id: string;
-  vni: number;
-  name: string;
-  vlan: number;
-  vtepIps: string[];
-  status: "active" | "inactive";
-  tunnelCount: number;
-}
+// Using VXLAN interface from api-client.ts
 
 const VXLANManager = () => {
   const [vxlans, setVxlans] = useState<VXLAN[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedSwitch, setSelectedSwitch] = useState<string>("");
+  const [availableSwitches, setAvailableSwitches] = useState<{id: string, hostname: string}[]>([]);
+  const [availableInterfaces, setAvailableInterfaces] = useState<{name: string, status: string}[]>([]);
   const [showAddVXLAN, setShowAddVXLAN] = useState(false);
   const [newVXLAN, setNewVXLAN] = useState<{
     vni: string;
     name: string;
     vlan: string;
+    sourceInterface: string;
+    vtepIp: string;
     status: "active" | "inactive";
   }>({
     vni: "",
     name: "",
     vlan: "",
+    sourceInterface: "",
+    vtepIp: "", 
     status: "active"
   });
+  
+  // Fetch VXLANs when component mounts
+  useEffect(() => {
+    fetchVXLANs();
+    fetchSwitches();
+  }, []);
+  
+  const fetchVXLANs = async () => {
+    setIsLoading(true);
+    try {
+      const data = await VXLANsAPI.getAllVXLANs();
+      setVxlans(data);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load VXLANs";
+      toast.error(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const fetchSwitches = async () => {
+    try {
+      const switches = await VXLANsAPI.getAvailableSwitches();
+      setAvailableSwitches(switches);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load switches";
+      toast.error(errorMsg);
+    }
+  };
+  
+  const fetchInterfaces = async (switchId: string) => {
+    if (!switchId) return;
+    
+    try {
+      const interfaces = await VXLANsAPI.getInterfaces(switchId);
+      setAvailableInterfaces(interfaces);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load interfaces";
+      toast.error(errorMsg);
+    }
+  };
+  
+  const refreshVXLANs = async () => {
+    setRefreshing(true);
+    try {
+      const data = await VXLANsAPI.getAllVXLANs();
+      setVxlans(data);
+      toast.success("VXLAN data refreshed");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to refresh VXLANs";
+      toast.error(errorMsg);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  
+  const handleSwitchChange = (switchId: string) => {
+    setSelectedSwitch(switchId);
+    setNewVXLAN(prev => ({ ...prev, sourceInterface: "" })); // Reset interface selection
+    fetchInterfaces(switchId);
+  };
 
-  const handleAddVXLAN = () => {
-    if (newVXLAN.vni && newVXLAN.name && newVXLAN.vlan) {
-      const vxlan: VXLAN = {
-        id: `vxlan-${Date.now()}`,
+  const handleAddVXLAN = async () => {
+    if (!newVXLAN.vni || !newVXLAN.name || !newVXLAN.vlan || !selectedSwitch || !newVXLAN.sourceInterface || !newVXLAN.vtepIp) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const result = await VXLANsAPI.addVXLAN(selectedSwitch, {
         vni: parseInt(newVXLAN.vni),
         name: newVXLAN.name,
         vlan: parseInt(newVXLAN.vlan),
-        vtepIps: [],
-        status: newVXLAN.status,
-        tunnelCount: 0
-      };
-      setVxlans([...vxlans, vxlan]);
-      setNewVXLAN({ vni: "", name: "", vlan: "", status: "active" });
+        sourceInterface: newVXLAN.sourceInterface,
+        vtepIp: newVXLAN.vtepIp
+      });
+      
+      // Refresh the list of VXLANs
+      await fetchVXLANs();
+      
+      toast.success(`VXLAN ${newVXLAN.vni} created successfully`);
+      setNewVXLAN({ 
+        vni: "", 
+        name: "", 
+        vlan: "", 
+        sourceInterface: "", 
+        vtepIp: "",
+        status: "active" 
+      });
+      setSelectedSwitch("");
       setShowAddVXLAN(false);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to create VXLAN";
+      toast.error(errorMsg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleDeleteVXLAN = (id: string) => {
-    setVxlans(vxlans.filter(v => v.id !== id));
+  const handleDeleteVXLAN = async (vxlan: VXLAN) => {
+    if (!confirm(`Are you sure you want to delete VXLAN ${vxlan.vni} (${vxlan.name})?`)) {
+      return;
+    }
+    
+    if (!vxlan.switches || vxlan.switches.length === 0) {
+      toast.error("Cannot delete VXLAN: no associated switches found");
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // Delete from all associated switches
+      const deletePromises = vxlan.switches.map(sw => 
+        VXLANsAPI.deleteVXLAN(sw.id, vxlan.vni)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      // Refresh the list of VXLANs
+      await fetchVXLANs();
+      toast.success(`VXLAN ${vxlan.vni} deleted successfully`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to delete VXLAN";
+      toast.error(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -64,7 +176,17 @@ const VXLANManager = () => {
           <h2 className="text-2xl font-bold text-white">VXLAN Management</h2>
           <p className="text-slate-400">Configure VXLAN overlays and network virtualization</p>
         </div>
-        <Dialog open={showAddVXLAN} onOpenChange={setShowAddVXLAN}>
+        <div className="flex gap-2">
+          <Button 
+            onClick={refreshVXLANs} 
+            variant="outline"
+            className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+            disabled={refreshing || isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Dialog open={showAddVXLAN} onOpenChange={setShowAddVXLAN}>
           <DialogTrigger asChild>
             <Button className="bg-cyan-500 hover:bg-cyan-600 text-white">
               <Plus className="h-4 w-4 mr-2" />
@@ -120,6 +242,67 @@ const VXLANManager = () => {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="switch-select">Select Switch</Label>
+                <Select value={selectedSwitch} onValueChange={handleSwitchChange}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Select a switch" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {availableSwitches.length === 0 ? (
+                      <SelectItem value="no-switches" disabled>
+                        <span className="flex items-center">
+                          <AlertTriangle className="h-4 w-4 inline-block mr-1 text-yellow-500" />
+                          No switches available
+                        </span>
+                      </SelectItem>
+                    ) : (
+                      availableSwitches.map(sw => (
+                        <SelectItem key={sw.id} value={sw.id}>{sw.hostname}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="source-interface">Source Interface</Label>
+                <Select 
+                  value={newVXLAN.sourceInterface} 
+                  onValueChange={(value) => setNewVXLAN({ ...newVXLAN, sourceInterface: value })}
+                  disabled={!selectedSwitch || availableInterfaces.length === 0}
+                >
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                    <SelectValue placeholder="Select an interface" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {availableInterfaces.length === 0 ? (
+                      <SelectItem value="no-interfaces" disabled>
+                        <span className="flex items-center">
+                          <AlertTriangle className="h-4 w-4 inline-block mr-1 text-yellow-500" />
+                          No interfaces available
+                        </span>
+                      </SelectItem>
+                    ) : (
+                      availableInterfaces.map(iface => (
+                        <SelectItem key={iface.name} value={iface.name}>
+                          {iface.name} ({iface.status})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="vtep-ip">VTEP IP Address</Label>
+                <Input
+                  id="vtep-ip"
+                  placeholder="e.g., 10.0.0.1"
+                  value={newVXLAN.vtepIp}
+                  onChange={(e) => setNewVXLAN({ ...newVXLAN, vtepIp: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white"
+                  disabled={!selectedSwitch}
+                />
+              </div>
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setShowAddVXLAN(false)}>
                   Cancel
@@ -131,6 +314,7 @@ const VXLANManager = () => {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -178,11 +362,16 @@ const VXLANManager = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {vxlans.length === 0 ? (
+          {isLoading ? (
             <div className="text-center py-8">
-              <Zap className="h-12 w-12 mx-auto text-slate-600 mb-4" />
+              <RefreshCw className="h-12 w-12 mx-auto text-slate-600 mb-4 animate-spin" />
+              <p className="text-slate-400">Loading VXLANs...</p>
+            </div>
+          ) : vxlans.length === 0 ? (
+            <div className="text-center py-8">
+              <Activity className="h-12 w-12 mx-auto text-slate-600 mb-4" />
               <p className="text-slate-400">No VXLANs configured</p>
-              <p className="text-slate-500 text-sm">Click "Add VXLAN" to create your first overlay network</p>
+              <p className="text-slate-500 text-sm">Click "Add VXLAN" to get started</p>
             </div>
           ) : (
             <Table>
@@ -219,7 +408,7 @@ const VXLANManager = () => {
                           size="sm" 
                           variant="outline" 
                           className="border-red-500/50 text-red-400 hover:bg-red-500/20"
-                          onClick={() => handleDeleteVXLAN(vxlan.id)}
+                          onClick={() => handleDeleteVXLAN(vxlan)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>

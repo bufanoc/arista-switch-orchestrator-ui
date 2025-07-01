@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { Settings, ArrowRight, CheckCircle, AlertTriangle, Zap } from "lucide-react";
+import { Settings, ArrowRight, CheckCircle, AlertTriangle, Zap, Loader2, RefreshCw } from "lucide-react";
+import { TunnelsAPI, TunnelConfig, TunnelResult } from "@/lib/api-client";
+import { toast } from "sonner";
 
 const TunnelWizard = () => {
   const [step, setStep] = useState(1);
@@ -18,62 +20,167 @@ const TunnelWizard = () => {
     vni: "",
     vtepA: "",
     vtepB: "",
+    sourceInterfaceA: "",
+    sourceInterfaceB: "",
     sessionA: "",
     sessionB: ""
   });
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [commitStatus, setCommitStatus] = useState<"idle" | "staging" | "committing" | "success" | "failed">("idle");
-
-  const availableSwitches = [
-    { id: "arista-leaf-01", name: "arista-leaf-01", status: "connected" },
-    { id: "arista-leaf-02", name: "arista-leaf-02", status: "connected" },
-    { id: "arista-spine-01", name: "arista-spine-01", status: "warning" }
-  ];
-
-  const suggestedVNIs = [20001, 20002, 20003, 20004, 20005];
+  const [availableSwitches, setAvailableSwitches] = useState<{id: string, hostname: string, model: string, status: string}[]>([]);
+  const [availableVNIs, setAvailableVNIs] = useState<number[]>([]);
+  const [interfacesA, setInterfacesA] = useState<{name: string, status: string}[]>([]);
+  const [interfacesB, setInterfacesB] = useState<{name: string, status: string}[]>([]);
+  const [configPreview, setConfigPreview] = useState<{configA: string, configB: string}>({configA: "", configB: ""});
+  
+  useEffect(() => {
+    // Load available switches when component mounts
+    fetchAvailableSwitches();
+    fetchAvailableVNIs();
+  }, []);
+  
+  const fetchAvailableSwitches = async () => {
+    setIsLoading(true);
+    try {
+      const switches = await TunnelsAPI.getAvailableSwitches();
+      setAvailableSwitches(switches.map(sw => ({
+        ...sw,
+        status: "connected" // Assume all returned switches are connected
+      })));
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load available switches";
+      toast.error(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const fetchAvailableVNIs = async () => {
+    try {
+      const vnis = await TunnelsAPI.getAvailableVNIs();
+      setAvailableVNIs(vnis);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load suggested VNIs";
+      toast.error(errorMsg);
+      // Set some default values if the API call fails
+      setAvailableVNIs([20001, 20002, 20003, 20004, 20005]);
+    }
+  };
+  
+  const fetchSwitchInterfaces = async (switchId: string, isFirst: boolean) => {
+    try {
+      const interfaces = await TunnelsAPI.getSwitchInterfaces(switchId);
+      if (isFirst) {
+        setInterfacesA(interfaces);
+      } else {
+        setInterfacesB(interfaces);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load switch interfaces";
+      toast.error(errorMsg);
+    }
+  };
+  
+  const fetchTunnelPreview = async () => {
+    if (!tunnelConfig.switchA || !tunnelConfig.switchB || !tunnelConfig.vni || 
+        !tunnelConfig.sourceInterfaceA || !tunnelConfig.sourceInterfaceB || 
+        !tunnelConfig.vtepA || !tunnelConfig.vtepB) {
+      return;
+    }
+    
+    try {
+      const preview = await TunnelsAPI.getTunnelPreview({
+        switchA: tunnelConfig.switchA,
+        switchB: tunnelConfig.switchB,
+        vni: parseInt(tunnelConfig.vni),
+        sourceInterfaceA: tunnelConfig.sourceInterfaceA,
+        sourceInterfaceB: tunnelConfig.sourceInterfaceB,
+        vtepA: tunnelConfig.vtepA,
+        vtepB: tunnelConfig.vtepB
+      });
+      
+      setConfigPreview(preview);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to generate configuration preview";
+      toast.error(errorMsg);
+    }
+  };
 
   const handleCreateTunnel = async () => {
     setIsCreating(true);
     setCommitStatus("staging");
     setProgress(0);
-
-    // Simulate two-phase commit process
-    const phases = [
-      { name: "Creating configuration sessions", progress: 20 },
-      { name: "Staging configuration on Switch A", progress: 40 },
-      { name: "Staging configuration on Switch B", progress: 60 },
-      { name: "Validating configurations", progress: 80 },
-      { name: "Committing to both switches", progress: 100 }
-    ];
-
-    for (const [index, phase] of phases.entries()) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setProgress(phase.progress);
+    
+    try {
+      // Create actual tunnel configuration using the API
+      const tunnelData: TunnelConfig = {
+        switchA: tunnelConfig.switchA,
+        switchB: tunnelConfig.switchB,
+        vni: parseInt(tunnelConfig.vni as string),
+        sourceInterfaceA: tunnelConfig.sourceInterfaceA,
+        sourceInterfaceB: tunnelConfig.sourceInterfaceB,
+        vtepA: tunnelConfig.vtepA,
+        vtepB: tunnelConfig.vtepB
+      };
       
-      if (index === phases.length - 1) {
+      // First phase - create configuration sessions
+      setProgress(20);
+      
+      // Second phase - stage configurations
+      setProgress(40);
+      setCommitStatus("staging");
+      
+      // Third phase - validate configurations
+      setProgress(60);
+      
+      // Fourth phase - commit configurations
+      setProgress(80);
+      setCommitStatus("committing");
+      
+      // Execute the actual API call to create tunnel
+      const result = await TunnelsAPI.createTunnel(tunnelData);
+      
+      if (result.success) {
+        setProgress(100);
         setCommitStatus("success");
+        toast.success("Tunnel created successfully!");
+        
+        // Reset after 2 seconds
+        setTimeout(() => {
+          setIsCreating(false);
+          setStep(1);
+          setTunnelConfig({
+            switchA: "",
+            switchB: "", 
+            vni: "",
+            vtepA: "",
+            vtepB: "",
+            sourceInterfaceA: "",
+            sourceInterfaceB: "",
+            sessionA: "",
+            sessionB: ""
+          });
+          setCommitStatus("idle");
+          setProgress(0);
+        }, 2000);
+      } else {
+        throw new Error(result.error || "Failed to create tunnel");
       }
+    } catch (error) {
+      setCommitStatus("failed");
+      const errorMsg = error instanceof Error ? error.message : "Failed to create tunnel";
+      toast.error(errorMsg);
+      
+      setTimeout(() => {
+        setIsCreating(false);
+        setCommitStatus("idle");
+      }, 2000);
     }
-
-    setTimeout(() => {
-      setIsCreating(false);
-      setStep(1);
-      setTunnelConfig({
-        switchA: "",
-        switchB: "", 
-        vni: "",
-        vtepA: "",
-        vtepB: "",
-        sessionA: "",
-        sessionB: ""
-      });
-      setCommitStatus("idle");
-      setProgress(0);
-    }, 2000);
   };
 
-  const generateSessionId = () => `tunnel-${Date.now()}`;
+  // Session IDs will be generated by the backend
 
   return (
     <div className="space-y-6">
@@ -105,16 +212,35 @@ const TunnelWizard = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="switch-a">Switch A</Label>
-                  <Select value={tunnelConfig.switchA} onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, switchA: value })}>
+                  <Select 
+                    value={tunnelConfig.switchA} 
+                    onValueChange={(value) => {
+                      setTunnelConfig({ ...tunnelConfig, switchA: value });
+                      fetchSwitchInterfaces(value, true);
+                    }}>
                     <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                       <SelectValue placeholder="Select first switch" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      {availableSwitches.map((sw) => (
+                      {isLoading ? (
+                        <SelectItem value="loading" disabled>
+                          <div className="flex items-center">
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Loading switches...
+                          </div>
+                        </SelectItem>
+                      ) : availableSwitches.length === 0 ? (
+                        <SelectItem value="no-switches" disabled>
+                          <div className="flex items-center">
+                            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-400" />
+                            No switches available
+                          </div>
+                        </SelectItem>
+                      ) : availableSwitches.map((sw) => (
                         <SelectItem key={sw.id} value={sw.id} disabled={sw.status !== "connected"}>
                           <div className="flex items-center">
                             <span className={`h-2 w-2 rounded-full mr-2 ${sw.status === "connected" ? "bg-green-400" : "bg-yellow-400"}`} />
-                            {sw.name}
+                            {sw.hostname} ({sw.model})
                           </div>
                         </SelectItem>
                       ))}
@@ -123,16 +249,35 @@ const TunnelWizard = () => {
                 </div>
                 <div>
                   <Label htmlFor="switch-b">Switch B</Label>
-                  <Select value={tunnelConfig.switchB} onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, switchB: value })}>
+                  <Select 
+                    value={tunnelConfig.switchB} 
+                    onValueChange={(value) => {
+                      setTunnelConfig({ ...tunnelConfig, switchB: value });
+                      fetchSwitchInterfaces(value, false);
+                    }}>
                     <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                       <SelectValue placeholder="Select second switch" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      {availableSwitches.filter(sw => sw.id !== tunnelConfig.switchA).map((sw) => (
+                      {isLoading ? (
+                        <SelectItem value="loading" disabled>
+                          <div className="flex items-center">
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Loading switches...
+                          </div>
+                        </SelectItem>
+                      ) : availableSwitches.length === 0 ? (
+                        <SelectItem value="no-switches" disabled>
+                          <div className="flex items-center">
+                            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-400" />
+                            No switches available
+                          </div>
+                        </SelectItem>
+                      ) : availableSwitches.filter(sw => sw.id !== tunnelConfig.switchA).map((sw) => (
                         <SelectItem key={sw.id} value={sw.id} disabled={sw.status !== "connected"}>
                           <div className="flex items-center">
                             <span className={`h-2 w-2 rounded-full mr-2 ${sw.status === "connected" ? "bg-green-400" : "bg-yellow-400"}`} />
-                            {sw.name}
+                            {sw.hostname} ({sw.model})
                           </div>
                         </SelectItem>
                       ))}
@@ -167,12 +312,12 @@ const TunnelWizard = () => {
                       onChange={(e) => setTunnelConfig({ ...tunnelConfig, vni: e.target.value })}
                       className="bg-slate-800 border-slate-700 text-white"
                     />
-                    <Select onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, vni: value })}>
+                    <Select onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, vni: value })} disabled={availableVNIs.length === 0}>
                       <SelectTrigger className="w-32 bg-slate-800 border-slate-700 text-white">
                         <SelectValue placeholder="Auto" />
                       </SelectTrigger>
                       <SelectContent className="bg-slate-800 border-slate-700">
-                        {suggestedVNIs.map((vni) => (
+                        {availableVNIs.map((vni) => (
                           <SelectItem key={vni} value={vni.toString()}>{vni}</SelectItem>
                         ))}
                       </SelectContent>
@@ -182,7 +327,7 @@ const TunnelWizard = () => {
                 <div className="space-y-2">
                   <Label>Suggested Available VNIs</Label>
                   <div className="flex flex-wrap gap-2">
-                    {suggestedVNIs.slice(0, 3).map((vni) => (
+                    {availableVNIs.slice(0, 3).map((vni) => (
                       <Badge 
                         key={vni} 
                         className="bg-green-500/20 text-green-400 border-green-500/50 cursor-pointer"
@@ -192,6 +337,64 @@ const TunnelWizard = () => {
                       </Badge>
                     ))}
                   </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="interface-a">Source Interface - {tunnelConfig.switchA}</Label>
+                  <Select 
+                    value={tunnelConfig.sourceInterfaceA} 
+                    onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, sourceInterfaceA: value })}                  
+                    disabled={!tunnelConfig.switchA || interfacesA.length === 0}
+                  >
+                    <SelectTrigger id="interface-a" className="bg-slate-800 border-slate-700 text-white">
+                      <SelectValue placeholder="Select interface" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      {interfacesA.length === 0 ? (
+                        <SelectItem value="no-interfaces" disabled>
+                          <span className="flex items-center">
+                            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-500" />
+                            No interfaces available
+                          </span>
+                        </SelectItem>
+                      ) : (
+                        interfacesA.map(iface => (
+                          <SelectItem key={iface.name} value={iface.name}>
+                            {iface.name} ({iface.status})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="interface-b">Source Interface - {tunnelConfig.switchB}</Label>
+                  <Select 
+                    value={tunnelConfig.sourceInterfaceB} 
+                    onValueChange={(value) => setTunnelConfig({ ...tunnelConfig, sourceInterfaceB: value })}
+                    disabled={!tunnelConfig.switchB || interfacesB.length === 0}
+                  >
+                    <SelectTrigger id="interface-b" className="bg-slate-800 border-slate-700 text-white">
+                      <SelectValue placeholder="Select interface" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      {interfacesB.length === 0 ? (
+                        <SelectItem value="no-interfaces" disabled>
+                          <span className="flex items-center">
+                            <AlertTriangle className="h-4 w-4 mr-2 text-yellow-500" />
+                            No interfaces available
+                          </span>
+                        </SelectItem>
+                      ) : (
+                        interfacesB.map(iface => (
+                          <SelectItem key={iface.name} value={iface.name}>
+                            {iface.name} ({iface.status})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -222,14 +425,12 @@ const TunnelWizard = () => {
                 </Button>
                 <Button 
                   onClick={() => {
-                    setTunnelConfig({
-                      ...tunnelConfig,
-                      sessionA: generateSessionId(),
-                      sessionB: generateSessionId()
-                    });
+                    // Fetch the tunnel configuration preview before proceeding to review
+                    fetchTunnelPreview();
                     setStep(3);
                   }}
-                  disabled={!tunnelConfig.vni || !tunnelConfig.vtepA || !tunnelConfig.vtepB}
+                  disabled={!tunnelConfig.vni || !tunnelConfig.vtepA || !tunnelConfig.vtepB || 
+                    !tunnelConfig.sourceInterfaceA || !tunnelConfig.sourceInterfaceB}
                   className="bg-cyan-500 hover:bg-cyan-600"
                 >
                   Next <ArrowRight className="h-4 w-4 ml-2" />
@@ -273,6 +474,25 @@ const TunnelWizard = () => {
                   If any stage fails, all configurations will be rolled back automatically.
                 </AlertDescription>
               </Alert>
+              
+              {/* Configuration Preview */}
+              <div className="space-y-2">
+                <h4 className="font-medium text-slate-300">Configuration Preview:</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h5 className="text-xs text-slate-400 mb-1">Switch A ({tunnelConfig.switchA})</h5>
+                    <pre className="p-2 bg-slate-950 rounded text-xs font-mono text-green-400 overflow-x-auto">
+                      {configPreview.configA || "No preview available"}
+                    </pre>
+                  </div>
+                  <div>
+                    <h5 className="text-xs text-slate-400 mb-1">Switch B ({tunnelConfig.switchB})</h5>
+                    <pre className="p-2 bg-slate-950 rounded text-xs font-mono text-green-400 overflow-x-auto">
+                      {configPreview.configB || "No preview available"}
+                    </pre>
+                  </div>
+                </div>
+              </div>
 
               {isCreating && (
                 <div className="space-y-4">
@@ -280,6 +500,12 @@ const TunnelWizard = () => {
                   <div className="text-center">
                     {commitStatus === "staging" && <span className="text-yellow-400">Staging configurations...</span>}
                     {commitStatus === "committing" && <span className="text-blue-400">Committing to switches...</span>}
+                    {commitStatus === "failed" && (
+                      <div className="flex items-center justify-center text-red-400">
+                        <AlertTriangle className="h-4 w-4 mr-2" />
+                        Failed to create tunnel. See error details above.
+                      </div>
+                    )}
                     {commitStatus === "success" && (
                       <div className="flex items-center justify-center text-green-400">
                         <CheckCircle className="h-4 w-4 mr-2" />

@@ -1,0 +1,25 @@
+{
+  "switches": [
+    {
+      "hostname": "pnet-153",
+      "mgmtIP": "192.168.88.153",
+      "username": "admin",
+      "password": "Xm101ona",
+      "notes": "PNET-LAB-Switch-153"
+    },
+    {
+      "hostname": "pnet-188",
+      "mgmtIP": "192.168.88.188",
+      "username": "admin",
+      "password": "Xm101ona",
+      "notes": "PNET-LAB-Switch-188"
+    },
+    {
+      "hostname": "xcp-ng-217",
+      "mgmtIP": "192.168.88.217",
+      "username": "admin",
+      "password": "Xm5909ona@@+",
+      "notes": "XCP-NG-Switch-217"
+    }
+  ]
+}

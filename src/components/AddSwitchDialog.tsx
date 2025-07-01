@@ -7,18 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertTriangle, Loader2, Server } from "lucide-react";
+import { SwitchesAPI, Switch } from "@/lib/api-client";
+import { toast } from "sonner";
 
-interface Switch {
-  id: string;
-  hostname: string;
-  mgmtIP: string;
-  username: string;
-  password: string;
-  model?: string;
-  eosVersion?: string;
-  uptime?: string;
-  status: "connected" | "disconnected" | "warning";
-}
+// Note: Using the Switch interface from api-client.ts
 
 interface AddSwitchDialogProps {
   open: boolean;
@@ -60,53 +52,75 @@ const AddSwitchDialog = ({ open, onOpenChange, onSwitchAdded }: AddSwitchDialogP
     setConnectionError("");
 
     try {
-      // Simulate eAPI connection test
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful connection and device info retrieval
-      const mockSwitchInfo = {
+      // Use the real API to test connection
+      const result = await SwitchesAPI.testConnection({
         hostname: formData.hostname,
         mgmtIP: formData.mgmtIP,
-        model: formData.model || "DCS-7050SX3-48YC8",
-        eosVersion: "4.29.2F",
-        uptime: "2d 14h 32m"
-      };
-
-      setSwitchInfo(mockSwitchInfo);
-      setConnectionStatus("success");
+        username: formData.username,
+        password: formData.password
+      });
+      
+      if (result.connected) {
+        // Connection successful
+        setSwitchInfo({
+          hostname: formData.hostname,
+          mgmtIP: formData.mgmtIP,
+          model: result.model || formData.model,
+          eosVersion: result.eosVersion,
+          // Uptime might not be present in the API response
+          uptime: result.uptime || 'Unknown'
+        });
+        setConnectionStatus("success");
+        toast.success("Successfully connected to switch");
+      } else {
+        // Connection failed
+        setConnectionStatus("failed");
+        setConnectionError(result.error || "Failed to connect to switch");
+        toast.error("Failed to connect to switch");
+      }
     } catch (error) {
       setConnectionStatus("failed");
-      setConnectionError("Failed to connect to switch. Please check credentials and network connectivity.");
+      const errorMsg = error instanceof Error ? error.message : "Failed to connect to switch. Please check credentials and network connectivity.";
+      setConnectionError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsConnecting(false);
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (connectionStatus !== "success" || !switchInfo) {
       return;
     }
-
-    const newSwitch: Switch = {
-      id: `switch-${Date.now()}`,
-      hostname: formData.hostname,
-      mgmtIP: formData.mgmtIP,
-      username: formData.username,
-      password: formData.password,
-      model: switchInfo.model,
-      eosVersion: switchInfo.eosVersion,
-      uptime: switchInfo.uptime,
-      status: "connected"
-    };
-
-    onSwitchAdded(newSwitch);
     
-    // Reset form
-    setFormData({ hostname: "", mgmtIP: "", username: "", password: "", model: "" });
-    setConnectionStatus("idle");
-    setSwitchInfo(null);
-    setConnectionError("");
-    onOpenChange(false);
+    setIsConnecting(true);
+    
+    try {
+      // Add the switch using the API
+      const addedSwitch = await SwitchesAPI.addSwitch({
+        hostname: formData.hostname,
+        mgmtIP: formData.mgmtIP,
+        username: formData.username,
+        password: formData.password,
+        model: formData.model || switchInfo.model
+      });
+      
+      // Notify the parent component
+      onSwitchAdded(addedSwitch);
+      toast.success(`Added switch ${addedSwitch.hostname}`);
+      
+      // Reset form
+      setFormData({ hostname: "", mgmtIP: "", username: "", password: "", model: "" });
+      setConnectionStatus("idle");
+      setSwitchInfo(null);
+      setConnectionError("");
+      onOpenChange(false);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to add switch";
+      toast.error(errorMsg);
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   return (

@@ -1,15 +1,70 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Activity, AlertCircle, CheckCircle, Clock, Network, Server, Wifi, Plus } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Network, Server, Wifi, Plus, RefreshCw, Trash } from "lucide-react";
+import { toast } from "sonner";
 import AddSwitchDialog from "./AddSwitchDialog";
+import { SwitchesAPI, Switch } from "@/lib/api-client";
 
 const Dashboard = () => {
   const [showAddSwitch, setShowAddSwitch] = useState(false);
-  const [switches, setSwitches] = useState([]);
+  const [switches, setSwitches] = useState<Switch[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Fetch all switches when component mounts
+  useEffect(() => {
+    fetchSwitches();
+  }, []);
+  
+  const fetchSwitches = async () => {
+    setIsLoading(true);
+    try {
+      const data = await SwitchesAPI.getAllSwitches();
+      setSwitches(data);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to load switches";
+      toast.error(errorMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const refreshSwitches = async () => {
+    setRefreshing(true);
+    try {
+      const data = await SwitchesAPI.getAllSwitches();
+      setSwitches(data);
+      toast.success("Switch data refreshed");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to refresh switches";
+      toast.error(errorMsg);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  
+  const handleDeleteSwitch = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this switch?")) {
+      return;
+    }
+    
+    try {
+      await SwitchesAPI.deleteSwitch(id);
+      setSwitches(switches.filter(s => s.id !== id));
+      toast.success("Switch deleted");
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to delete switch";
+      toast.error(errorMsg);
+    }
+  };
+  
+  const handleSwitchAdded = (newSwitch: Switch) => {
+    setSwitches([...switches, newSwitch]);
+  };
   
   const connectedCount = switches.filter(s => s.status === "connected").length;
   const totalCount = switches.length;
@@ -71,17 +126,33 @@ const Dashboard = () => {
               <Server className="h-5 w-5 mr-2 text-cyan-400" />
               Switch Inventory
             </CardTitle>
-            <Button 
-              onClick={() => setShowAddSwitch(true)}
-              className="bg-cyan-500 hover:bg-cyan-600 text-white"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Switch
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={refreshSwitches}
+                variant="outline"
+                className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                disabled={refreshing || isLoading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button 
+                onClick={() => setShowAddSwitch(true)}
+                className="bg-cyan-500 hover:bg-cyan-600 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Switch
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {switches.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-8">
+              <RefreshCw className="h-12 w-12 mx-auto text-slate-600 mb-4 animate-spin" />
+              <p className="text-slate-400">Loading switches...</p>
+            </div>
+          ) : switches.length === 0 ? (
             <div className="text-center py-8">
               <Server className="h-12 w-12 mx-auto text-slate-600 mb-4" />
               <p className="text-slate-400">No switches added yet</p>
@@ -110,10 +181,17 @@ const Dashboard = () => {
                           Connected
                         </Badge>
                       ) : (
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          Warning
-                        </Badge>
+                        <div className="flex gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-slate-400 hover:text-red-400"
+                            onClick={() => handleDeleteSwitch(sw.id)}
+                            title="Delete Switch"
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-white">{sw.hostname}</TableCell>
@@ -140,8 +218,8 @@ const Dashboard = () => {
 
       <AddSwitchDialog 
         open={showAddSwitch} 
-        onOpenChange={setShowAddSwitch}
-        onSwitchAdded={(newSwitch) => setSwitches([...switches, newSwitch])}
+        onOpenChange={setShowAddSwitch} 
+        onSwitchAdded={handleSwitchAdded}
       />
     </div>
   );
