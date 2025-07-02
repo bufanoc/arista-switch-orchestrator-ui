@@ -47,27 +47,32 @@ export interface Tunnel {
 export interface TunnelConfig {
   switchA: string;
   switchB: string;
-  vni: string;
+  vni: number;
   vtepA: string;
   vtepB: string;
-  vlan: string;
+  sourceInterfaceA: string;
+  sourceInterfaceB: string;
   sessionA?: string;
   sessionB?: string;
 }
 
 export interface TunnelResult {
-  sessionId: string;
-  status: "inProgress" | "success" | "failed";
-  phases: {
+  success: boolean;
+  sessionId?: string;
+  status?: "inProgress" | "success" | "failed";
+  phases?: {
     name: string;
     status: "pending" | "inProgress" | "complete" | "failed";
     progress: number;
   }[];
-  errorMessage: string | null;
+  error?: string;
+  errorMessage?: string | null;
+  configA?: string;
+  configB?: string;
 }
 
 // Base API URL
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 // Helper function for API requests with error handling
 async function apiRequest<T>(

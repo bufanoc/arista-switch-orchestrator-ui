@@ -94,7 +94,7 @@ const TunnelWizard = () => {
       const preview = await TunnelsAPI.getTunnelPreview({
         switchA: tunnelConfig.switchA,
         switchB: tunnelConfig.switchB,
-        vni: parseInt(tunnelConfig.vni),
+        vni: parseInt(tunnelConfig.vni as string),
         sourceInterfaceA: tunnelConfig.sourceInterfaceA,
         sourceInterfaceB: tunnelConfig.sourceInterfaceB,
         vtepA: tunnelConfig.vtepA,

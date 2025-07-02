@@ -1,11 +1,10 @@
-// Arista Switch Manager API Server
+// Arista Switch Manager API Server - HTTP only for lab use
 import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import fetch from 'node-fetch';
 
 // Load environment variables
 dotenv.config();
@@ -15,17 +14,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Configuration
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 3001; // Using 3001 to avoid permission issues with port 80
 const SWITCHES_CONFIG_PATH = process.env.SWITCHES_CONFIG || path.join(__dirname, '..', 'config', 'switches.json');
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
-// Initialize Express
+// Initialize Express with minimal configuration
 const app = express();
 
-// Middleware
+// Core middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// API router
+const apiRouter = express.Router();
+app.use('/api', apiRouter);
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -34,9 +37,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-// API Routes
-const apiRouter = express.Router();
 
 // Health check endpoint
 apiRouter.get('/health', (req, res) => {
@@ -47,9 +47,7 @@ apiRouter.get('/health', (req, res) => {
   });
 });
 
-// Mount API routes
-app.use('/api', apiRouter);
-
+// Register API router modules
 // Switches API endpoints
 import switchesRouter from './routes/switches.js';
 apiRouter.use('/switches', switchesRouter);
@@ -66,13 +64,18 @@ apiRouter.use('/vxlans', vxlansRouter);
 import tunnelsRouter from './routes/tunnels.js';
 apiRouter.use('/tunnels', tunnelsRouter);
 
-// Serve static files from build directory
+// Serve static files from build directory after API routes are registered
 const staticDir = path.join(__dirname, '..');
 app.use(express.static(staticDir));
 
-// SPA fallback - Serve index.html for any route not matched by API or static files
-app.get('*', (req, res) => {
-  res.sendFile(path.join(staticDir, 'index.html'));
+// SPA fallback - Using middleware approach instead of wildcard route to avoid path-to-regexp errors
+app.use((req, res, next) => {
+  // Only handle non-API routes for SPA fallback
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  } else {
+    next();
+  }
 });
 
 // Error handling middleware
@@ -85,24 +88,42 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Arista Switch Manager API server running on port ${PORT}`);
+// Start the server - explicitly listen on all interfaces
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Arista Switch Manager API running on port ${PORT}`);
+  console.log(`API base URL: http://localhost:${PORT}/api`);
+  console.log('Server bound to all network interfaces');
 });
 
 // Utility function to ensure config directory exists
-function ensureConfigDirectory() {
-  const configDir = path.dirname(SWITCHES_CONFIG_PATH);
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-  }
-  
-  // Create empty switches.json if it doesn't exist
-  if (!fs.existsSync(SWITCHES_CONFIG_PATH)) {
-    fs.writeFileSync(SWITCHES_CONFIG_PATH, JSON.stringify({ switches: [] }, null, 2));
-    console.log(`Created empty switches configuration at ${SWITCHES_CONFIG_PATH}`);
+async function ensureConfigDirectory() {
+  try {
+    const configDir = path.dirname(SWITCHES_CONFIG_PATH);
+    await fs.promises.mkdir(configDir, { recursive: true });
+    
+    // Check if config file exists
+    try {
+      await fs.promises.access(SWITCHES_CONFIG_PATH);
+    } catch (error) {
+      // Create empty config if it doesn't exist
+      await fs.promises.writeFile(
+        SWITCHES_CONFIG_PATH, 
+        JSON.stringify({ switches: [] }, null, 2)
+      );
+    }
+  } catch (error) {
+    console.error(`Error initializing config: ${error.message}`);
   }
 }
 
 // Initialize configuration
 ensureConfigDirectory();
+
+// Log successful startup without path-to-regexp errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at Promise:', promise, 'reason:', reason);
+});
